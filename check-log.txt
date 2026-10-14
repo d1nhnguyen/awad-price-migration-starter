@@ -1,0 +1,166 @@
+IA#2 run · 2026-10-14 10:27:35 · db /home/npdinh/study/AWAD/HW02/awad-price-migration-starter/data/app.db · v26.5.0 · HEAD 80c443b
+
+=== step 0 · v1 on both instances (baseline) · 2026-10-14 10:27:41 · traffic-log.txt line 3
+columns                id, name, price
+rows                   20082
+CONSISTENT
+
+--- step 1 · migration 002: bash -c cd '/home/npdinh/study/AWAD/HW02/ia2-v2' && node scripts/migrate.js up
+applied  002_add_price_vnd
+
+=== step 1 · migration 002 applied, v1 on both instances · 2026-10-14 10:27:46 · traffic-log.txt line 4
+columns                id, name, price, price_vnd
+rows                   20230
+price_vnd_null         20230
+price_vnd_not_integer  0
+disagree               0
+CONSISTENT, but 20230 rows have no price_vnd yet — nothing may read price_vnd until they do
+
+--- step 1 · backfill tried while v1 still serves (must refuse): bash -c cd '/home/npdinh/study/AWAD/HW02/ia2-v2' && node scripts/backfill.js
+http://localhost:3001 runs v1 (no version in /health), which does not write both columns; not starting
+
+=== step 2 · v2 on both instances (dual write) · 2026-10-14 10:27:57 · traffic-log.txt line 10
+columns                id, name, price, price_vnd
+rows                   20482
+price_vnd_null         19063
+price_vnd_not_integer  0
+disagree               32
+INCONSISTENT
+
+--- step 3 · backfill, Ctrl+C after 0.5 s: interrupted_backfill
+http://localhost:3001 runs v2
+http://localhost:3002 runs v2
+db /home/npdinh/study/AWAD/HW02/awad-price-migration-starter/data/app.db · 18703 rows to fix · ids 1..20625 · batches of 500
+stopped after id 2500 · 5 batches · 903 rows fixed
+still to fix: 17796 · no price at all (cannot be derived): 0
+stopped by Ctrl+C — run it again to finish; rows already fixed are skipped
+
+=== step 3a · backfill stopped halfway · 2026-10-14 10:28:03 · traffic-log.txt line 12
+columns                id, name, price, price_vnd
+rows                   20636
+price_vnd_null         17796
+price_vnd_not_integer  0
+disagree               0
+CONSISTENT, but 17796 rows have no price_vnd yet — nothing may read price_vnd until they do
+
+--- step 3 · backfill, run again: bash -c cd '/home/npdinh/study/AWAD/HW02/ia2-v2' && node scripts/backfill.js
+http://localhost:3001 runs v2
+http://localhost:3002 runs v2
+db /home/npdinh/study/AWAD/HW02/awad-price-migration-starter/data/app.db · 17796 rows to fix · ids 1..20646 · batches of 500
+  up to id 5000: 2500 rows fixed
+  up to id 10000: 7500 rows fixed
+  up to id 15000: 12500 rows fixed
+  up to id 20000: 17500 rows fixed
+done · 42 batches · 17796 rows fixed
+still to fix: 0 · no price at all (cannot be derived): 0
+
+=== step 3b · backfill finished · 2026-10-14 10:28:04 · traffic-log.txt line 12
+columns                id, name, price, price_vnd
+rows                   20681
+price_vnd_null         0
+price_vnd_not_integer  0
+disagree               0
+CONSISTENT
+
+=== step 4 · v3 on both instances (reads price_vnd) · 2026-10-14 10:28:20 · traffic-log.txt line 19
+columns                id, name, price, price_vnd
+rows                   21085
+price_vnd_null         0
+price_vnd_not_integer  0
+disagree               0
+CONSISTENT
+
+=== step 4r · ROLLBACK under traffic: v2 on both instances again · 2026-10-14 10:28:30 · traffic-log.txt line 25
+columns                id, name, price, price_vnd
+rows                   21337
+price_vnd_null         0
+price_vnd_not_integer  0
+disagree               0
+CONSISTENT
+
+=== step 4f · forward again: v3 on both instances · 2026-10-14 10:28:41 · traffic-log.txt line 31
+columns                id, name, price, price_vnd
+rows                   21566
+price_vnd_null         0
+price_vnd_not_integer  0
+disagree               0
+CONSISTENT
+
+=== step 5 · v4 on both instances (price neither read nor written) · 2026-10-14 10:28:51 · traffic-log.txt line 38
+columns                id, name, price, price_vnd
+rows                   21857
+price_vnd_null         0
+price_vnd_not_integer  0
+disagree               1196
+INCONSISTENT
+
+--- step 6 · migration 003: node scripts/migrate.js up
+applied  003_drop_price
+
+=== step 6 · migration 003 applied (price dropped), v4 on both instances · 2026-10-14 10:28:57 · traffic-log.txt line 39
+columns                id, name, price_vnd
+rows                   21973
+price_vnd_null         0
+price_vnd_not_integer  0
+CONSISTENT
+
+=== step end · after the traffic run · 2026-10-14 10:29:02 · traffic-log.txt line 42
+columns                id, name, price_vnd
+rows                   22102
+price_vnd_null         0
+price_vnd_not_integer  0
+CONSISTENT
+
+=== migrate:down for every migration, on a copy (data/down-demo.db) — the live database is not touched
+
+--- awad-price-migration-starter: node scripts/migrate.js down: env DB_PATH=/home/npdinh/study/AWAD/HW02/awad-price-migration-starter/data/down-demo.db bash -c cd '/home/npdinh/study/AWAD/HW02/awad-price-migration-starter' && node scripts/migrate.js down
+reverted 003_drop_price
+· check:
+columns                id, name, price_vnd, price
+rows                   22076
+price_vnd_null         0
+price_vnd_not_integer  0
+disagree               0
+CONSISTENT
+
+--- awad-price-migration-starter: node scripts/migrate.js down: env DB_PATH=/home/npdinh/study/AWAD/HW02/awad-price-migration-starter/data/down-demo.db bash -c cd '/home/npdinh/study/AWAD/HW02/awad-price-migration-starter' && node scripts/migrate.js down
+reverted 002_add_price_vnd
+· check:
+columns                id, name, price
+rows                   22076
+CONSISTENT
+
+--- ia2-v2: node scripts/migrate.js up: env DB_PATH=/home/npdinh/study/AWAD/HW02/awad-price-migration-starter/data/down-demo.db bash -c cd '/home/npdinh/study/AWAD/HW02/ia2-v2' && node scripts/migrate.js up
+applied  002_add_price_vnd
+· check:
+columns                id, name, price, price_vnd
+rows                   22076
+price_vnd_null         22076
+price_vnd_not_integer  0
+disagree               0
+CONSISTENT, but 22076 rows have no price_vnd yet — nothing may read price_vnd until they do
+
+--- ia2-v2: FORCE=1 node scripts/backfill.js: env DB_PATH=/home/npdinh/study/AWAD/HW02/awad-price-migration-starter/data/down-demo.db bash -c cd '/home/npdinh/study/AWAD/HW02/ia2-v2' && FORCE=1 node scripts/backfill.js
+db /home/npdinh/study/AWAD/HW02/awad-price-migration-starter/data/down-demo.db · 22076 rows to fix · ids 1..22076 · batches of 500
+  up to id 5000: 5000 rows fixed
+  up to id 10000: 10000 rows fixed
+  up to id 15000: 15000 rows fixed
+  up to id 20000: 20000 rows fixed
+done · 45 batches · 22076 rows fixed
+still to fix: 0 · no price at all (cannot be derived): 0
+· check:
+columns                id, name, price, price_vnd
+rows                   22076
+price_vnd_null         0
+price_vnd_not_integer  0
+disagree               0
+CONSISTENT
+
+--- awad-price-migration-starter: node scripts/migrate.js up: env DB_PATH=/home/npdinh/study/AWAD/HW02/awad-price-migration-starter/data/down-demo.db bash -c cd '/home/npdinh/study/AWAD/HW02/awad-price-migration-starter' && node scripts/migrate.js up
+applied  003_drop_price
+· check:
+columns                id, name, price_vnd
+rows                   22076
+price_vnd_null         0
+price_vnd_not_integer  0
+CONSISTENT

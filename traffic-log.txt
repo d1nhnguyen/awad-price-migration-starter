@@ -1,0 +1,42 @@
+
+=== traffic start 2026-10-14T03:27:36.656Z · targets http://localhost:3001 http://localhost:3002 · new clients 0
+   5.4s ok=4791 error=0 contract=0 stale=0 unavailable=0 rerouted=0
+  10.4s ok=10901 error=0 contract=0 stale=0 unavailable=0 rerouted=0
+  10.9s http://localhost:3001 down (ECONNRESET)
+  11.2s http://localhost:3001 back
+  15.4s ok=16990 error=0 contract=0 stale=0 unavailable=0 rerouted=5
+  16.0s http://localhost:3002 down (UND_ERR_SOCKET)
+  16.4s http://localhost:3002 back
+  20.4s ok=23117 error=0 contract=0 stale=0 unavailable=0 rerouted=7
+  21.4s new clients now 0.3
+  25.4s ok=29475 error=0 contract=0 stale=0 unavailable=0 rerouted=7
+  30.4s ok=35524 error=0 contract=0 stale=0 unavailable=0 rerouted=7
+  33.7s http://localhost:3001 down (ECONNREFUSED)
+  34.0s http://localhost:3001 back
+  35.4s ok=41732 error=0 contract=0 stale=0 unavailable=0 rerouted=12
+  38.9s http://localhost:3002 down (UND_ERR_SOCKET)
+  39.3s http://localhost:3002 back
+  40.4s ok=48478 error=0 contract=0 stale=0 unavailable=0 rerouted=15
+  44.3s http://localhost:3001 down (ECONNREFUSED)
+  44.6s http://localhost:3001 back
+  45.4s ok=54952 error=0 contract=0 stale=0 unavailable=0 rerouted=16
+  49.4s http://localhost:3002 down (UND_ERR_SOCKET)
+  49.7s http://localhost:3002 back
+  50.4s ok=61314 error=0 contract=0 stale=0 unavailable=0 rerouted=19
+  54.8s http://localhost:3001 down (UND_ERR_SOCKET)
+  55.1s http://localhost:3001 back
+  55.4s ok=67554 error=0 contract=0 stale=0 unavailable=0 rerouted=22
+  60.0s http://localhost:3002 down (ECONNRESET)
+  60.3s http://localhost:3002 back
+  60.4s ok=73841 error=0 contract=0 stale=0 unavailable=0 rerouted=25
+  65.2s http://localhost:3001 down (ECONNRESET)
+  65.4s ok=80104 error=0 contract=0 stale=0 unavailable=0 rerouted=31
+  65.5s http://localhost:3001 back
+  70.4s ok=86700 error=0 contract=0 stale=0 unavailable=0 rerouted=31
+  70.5s http://localhost:3002 down (ECONNREFUSED)
+  70.8s http://localhost:3002 back
+  75.4s ok=93068 error=0 contract=0 stale=0 unavailable=0 rerouted=34
+  80.4s ok=99418 error=0 contract=0 stale=0 unavailable=0 rerouted=34
+  85.4s ok=105759 error=0 contract=0 stale=0 unavailable=0 rerouted=34
+  86.0s FINAL ok=106558 error=0 contract=0 stale=0 unavailable=0 rerouted=34
+RESULT: zero failed requests
