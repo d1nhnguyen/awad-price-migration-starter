@@ -6,6 +6,8 @@
 //   DURATION=0        seconds, 0 = until Ctrl+C
 //   NEW_CLIENTS=0     share of requests from new clients (0..1) — they send and
 //                     expect `priceVnd`; turn it on once your API offers it
+//   NEW_CLIENTS_LATER=0.3  the share `kill -USR2 <pid>` switches to mid-run, so the
+//                     run that started on v1 goes on unbroken (added for IA#2)
 //   IDS=2000          menu ids 1..IDS are used; 1..50 are never re-priced
 //   LOG=traffic-log.txt
 //
@@ -17,7 +19,7 @@ import { appendFileSync } from 'node:fs';
 
 const TARGETS = (process.env.TARGETS ?? 'http://localhost:3001,http://localhost:3002').split(',');
 const DURATION = Number(process.env.DURATION ?? 0);
-const NEW_CLIENTS = Number(process.env.NEW_CLIENTS ?? 0);
+let NEW_CLIENTS = Number(process.env.NEW_CLIENTS ?? 0);
 const IDS = Number(process.env.IDS ?? 2000);
 const LOG = process.env.LOG ?? 'traffic-log.txt';
 const WORKERS = 8;
@@ -68,6 +70,12 @@ const inflight = new Set();
 const created = [];         // ids of items this run created, read back later
 const pick = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
 const isNew = () => Math.random() < NEW_CLIENTS;
+// `kill -USR2 <pid>` turns new clients on mid-run, once every instance offers priceVnd,
+// without breaking the run in two (NEW_CLIENTS_LATER, default 0.3).
+process.on('SIGUSR2', () => {
+  NEW_CLIENTS = Number(process.env.NEW_CLIENTS_LATER ?? 0.3);
+  log(`${ts()} new clients now ${NEW_CLIENTS}`);
+});
 
 function checkItem(r, client, where) {
   const d = r.data;
