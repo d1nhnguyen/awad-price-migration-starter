@@ -1,10 +1,11 @@
 import { createServer } from 'node:http';
 
-// v3 of the menu service. Every read now comes from price_vnd (dong, integer) — start
-// it only after the backfill, when no row has price_vnd NULL. Every write still sets
-// BOTH columns, so price stays current and v2 can be redeployed at any moment: that
-// is the way back from this version. The API answers in both units, as in v2.
-const VERSION = 'v3';
+// v4 of the menu service. The column price is neither read nor written any more:
+// price_vnd (dong, integer) is the only stored price, so migration 003 can drop price
+// once every instance runs v4. Old clients still send and read price in thousands —
+// it is converted here, at the edge. From now on price goes stale: the way back is
+// v3 (reads price_vnd), never v2 (reads price).
+const VERSION = 'v4';
 
 const json = (res, status, body) => {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -39,9 +40,8 @@ export function createApp(db) {
   const q = {
     list: db.prepare('SELECT id, name, price_vnd FROM menu_items ORDER BY id LIMIT ? OFFSET ?'),
     get: db.prepare('SELECT id, name, price_vnd FROM menu_items WHERE id = ?'),
-    // price is still written, rounded to whole dong, for v2 to read after a rollback
-    insert: db.prepare('INSERT INTO menu_items (name, price, price_vnd) VALUES (?, ? / 1000.0, ?)'),
-    setPrice: db.prepare('UPDATE menu_items SET price = ? / 1000.0, price_vnd = ? WHERE id = ?'),
+    insert: db.prepare('INSERT INTO menu_items (name, price_vnd) VALUES (?, ?)'),
+    setPrice: db.prepare('UPDATE menu_items SET price_vnd = ? WHERE id = ?'),
     insertOrder: db.prepare("INSERT INTO orders (created_at) VALUES (datetime('now'))"),
     insertLine: db.prepare('INSERT INTO order_items (order_id, menu_item_id, qty, unit_price) VALUES (?, ?, ?, ?)'),
   };
@@ -70,7 +70,7 @@ export function createApp(db) {
         const vnd = body && priceVndOf(body);
         if (!body || typeof body.name !== 'string' || !body.name || !vnd)
           return error(res, 400, 'invalid_body', `name (string) and ${PRICE_REQUIRED}`);
-        const { lastInsertRowid } = q.insert.run(body.name, vnd, vnd);
+        const { lastInsertRowid } = q.insert.run(body.name, vnd);
         return json(res, 201, view(q.get.get(lastInsertRowid)));
       }
     }
@@ -84,7 +84,7 @@ export function createApp(db) {
         const body = await readBody(req);
         const vnd = body && priceVndOf(body);
         if (!vnd) return error(res, 400, 'invalid_body', PRICE_REQUIRED);
-        q.setPrice.run(vnd, vnd, id);
+        q.setPrice.run(vnd, id);
         return json(res, 200, view(q.get.get(id)));
       }
     }
