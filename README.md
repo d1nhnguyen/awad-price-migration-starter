@@ -82,3 +82,9 @@ is wrong but has not been read yet. Run `npm run check` after every step as well
 ## What to hand in
 
 See the IA#2 rubric on Classroom.
+
+## IA#2 — this submission
+
+The plan, its rollback and its point of no return are in [MIGRATION.md](MIGRATION.md). Tags `v1`–`v4` are
+the deployed code versions. `npm run ia2` replays the whole migration under traffic (Node ≥ 22.5) and
+rewrites [traffic-log.txt](traffic-log.txt) and [check-log.txt](check-log.txt).
