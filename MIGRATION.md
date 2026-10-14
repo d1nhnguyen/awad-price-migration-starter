@@ -92,7 +92,7 @@ UPDATE menu_items SET price_vnd = CAST(round(price * 1000) AS INTEGER)
   one wrong row" from the slides. During the step-2 rolling restart, v2 writes both columns of a row,
   then the v1 that is still serving re-prices that row in `price` alone. The row's `price_vnd` is now
   set but wrong. A backfill that only looks at `price_vnd IS NULL` never revisits it. In our run,
-  check-log.txt shows these rows at step 2 (`disagree` > 0), and they are gone after step 3.
+  check-log.txt shows 32 such rows at step 2 (`disagree 32`), and they are gone after step 3b.
 - **Re-runnable.** Until v3, `price` is the truth. A second run, or a run after Ctrl+C, therefore
   recomputes the same values and touches only rows still wrong. check-log.txt shows it stopped halfway
   (step 3a), then run again (step 3b, `CONSISTENT`).
@@ -107,7 +107,7 @@ UPDATE menu_items SET price_vnd = CAST(round(price * 1000) AS INTEGER)
 ## The way back
 
 Performed under traffic: v3 → **v2** on both instances (step 4r), then forward to v3 again (step 4f).
-The traffic log shows zero failures for that stretch, and `npm run check` says `CONSISTENT` before (step 4),
+traffic-log.txt lines 19–31 show zero failures for that stretch, and `npm run check` says `CONSISTENT` before (step 4),
 in between (4r) and after (4f).
 
 **Why it is safe.** v3 still writes `price` on every write path. At every moment, `price` is as current
@@ -117,8 +117,8 @@ from `price_vnd`.
 
 **Which later rollback would not be safe.**
 
-- **v4 → v2 (or v1).** v4 no longer writes `price`. After a few seconds of traffic, hundreds of rows
-  have a `price` that nobody set: check-log.txt step 5 shows `disagree` > 0. A v2 instance would
+- **v4 → v2 (or v1).** v4 no longer writes `price`. After a few seconds of traffic, 1,196 rows
+  had a `price` that nobody set: check-log.txt step 5 shows `disagree 1196`. A v2 instance would
   return those old prices with `200 OK` and log no error. That is the failure only an accountant
   finds. From v4, the way back is v3, which reads `price_vnd`.
 - **Anything below v4 after step 6.** `price` no longer exists. First `migrate:down` (rebuild `price`),
@@ -128,8 +128,8 @@ from `price_vnd`.
 
 | Where | What check-log.txt shows | Why | What makes it right again |
 |---|---|---|---|
-| step 2 (v2 on both) | `disagree` = a few rows | the v1/v2 overlap described in *The backfill*. No request was wrong: both versions read `price`, which is right | the backfill, step 3b `CONSISTENT` |
-| step 5 (v4 on both) | `disagree` = hundreds of rows | v4 has stopped writing `price` by design, and check.js compares the two columns while both exist | dropping `price`, step 6 `CONSISTENT` |
+| step 2 (v2 on both) | `disagree 32` | the v1/v2 overlap described in *The backfill*. No request was wrong: both versions read `price`, which is right | the backfill, step 3b `CONSISTENT` |
+| step 5 (v4 on both) | `disagree 1196` | v4 has stopped writing `price` by design, and check.js compares the two columns while both exist | dropping `price`, step 6 `CONSISTENT` |
 
 Every other check — after the backfill, before, during and after the rollback, after the drop, and at
 the end — is `CONSISTENT`.
