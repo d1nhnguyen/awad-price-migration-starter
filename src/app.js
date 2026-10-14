@@ -1,7 +1,9 @@
 import { createServer } from 'node:http';
 
-// v1 of the menu service. Prices are stored in THOUSANDS of dong, as a float:
-// 45.5 means 45,500 đ. That was last year's decision; IA#2 undoes it.
+// v2 of the menu service. Needs migration 002 (menu_items.price_vnd, dong, integer).
+// Every write sets BOTH columns; every read still comes from price (thousands of
+// dong), so v1 and v2 can serve side by side. The API offers priceVnd next to price.
+const VERSION = 'v2';
 
 const json = (res, status, body) => {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -17,24 +19,42 @@ async function readBody(req) {
 }
 
 const isPrice = (p) => typeof p === 'number' && Number.isFinite(p) && p > 0 && p <= 100000;
+const isPriceVnd = (v) => Number.isInteger(v) && v > 0 && v <= 100000 * 1000;
+const toVnd = (price) => Math.round(price * 1000);
+
+// Old clients send price (thousands), new clients priceVnd (dong). Returns the price
+// in dong, or null if neither is valid, or if both are sent and they disagree.
+function priceVndOf(body) {
+  if (body.price === undefined && body.priceVnd === undefined) return null;
+  if (body.price !== undefined && !isPrice(body.price)) return null;
+  if (body.priceVnd !== undefined && !isPriceVnd(body.priceVnd)) return null;
+  const vnd = body.priceVnd ?? toVnd(body.price);
+  if (body.price !== undefined && toVnd(body.price) !== vnd) return null;
+  return vnd >= 1 ? vnd : null; // isPrice lets through 0.0001, which is no dong at all
+}
+const PRICE_REQUIRED = 'price (thousands of dong) or priceVnd (dong, integer) is required';
 
 export function createApp(db) {
   const q = {
     list: db.prepare('SELECT id, name, price FROM menu_items ORDER BY id LIMIT ? OFFSET ?'),
     get: db.prepare('SELECT id, name, price FROM menu_items WHERE id = ?'),
-    insert: db.prepare('INSERT INTO menu_items (name, price) VALUES (?, ?)'),
-    setPrice: db.prepare('UPDATE menu_items SET price = ? WHERE id = ?'),
+    // price is written rounded to whole dong, so both columns always hold the same price
+    insert: db.prepare('INSERT INTO menu_items (name, price, price_vnd) VALUES (?, ? / 1000.0, ?)'),
+    setPrice: db.prepare('UPDATE menu_items SET price = ? / 1000.0, price_vnd = ? WHERE id = ?'),
     insertOrder: db.prepare("INSERT INTO orders (created_at) VALUES (datetime('now'))"),
     insertLine: db.prepare('INSERT INTO order_items (order_id, menu_item_id, qty, unit_price) VALUES (?, ?, ?, ?)'),
   };
 
-  const view = (row) => ({ id: row.id, name: row.name, price: row.price });
+  const view = (row) => ({
+    id: row.id, name: row.name, price: row.price,
+    priceVnd: row.price === null ? null : toVnd(row.price),
+  });
 
   async function handle(req, res) {
     const url = new URL(req.url, 'http://x');
     const parts = url.pathname.split('/').filter(Boolean);
 
-    if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { ok: true });
+    if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { ok: true, version: VERSION });
 
     if (parts[0] === 'menu' && parts.length === 1) {
       if (req.method === 'GET') {
@@ -44,9 +64,10 @@ export function createApp(db) {
       }
       if (req.method === 'POST') {
         const body = await readBody(req);
-        if (!body || typeof body.name !== 'string' || !body.name || !isPrice(body.price))
-          return error(res, 400, 'invalid_body', 'name (string) and price (thousands of dong) are required');
-        const { lastInsertRowid } = q.insert.run(body.name, body.price);
+        const vnd = body && priceVndOf(body);
+        if (!body || typeof body.name !== 'string' || !body.name || !vnd)
+          return error(res, 400, 'invalid_body', `name (string) and ${PRICE_REQUIRED}`);
+        const { lastInsertRowid } = q.insert.run(body.name, vnd, vnd);
         return json(res, 201, view(q.get.get(lastInsertRowid)));
       }
     }
@@ -58,9 +79,9 @@ export function createApp(db) {
       if (req.method === 'GET') return json(res, 200, view(row));
       if (req.method === 'PATCH') {
         const body = await readBody(req);
-        if (!body || !isPrice(body.price))
-          return error(res, 400, 'invalid_body', 'price (thousands of dong) is required');
-        q.setPrice.run(body.price, id);
+        const vnd = body && priceVndOf(body);
+        if (!vnd) return error(res, 400, 'invalid_body', PRICE_REQUIRED);
+        q.setPrice.run(vnd, vnd, id);
         return json(res, 200, view(q.get.get(id)));
       }
     }

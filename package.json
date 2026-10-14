@@ -13,6 +13,7 @@
     "seed": "node scripts/seed.js",
     "traffic": "node scripts/traffic.js",
     "check": "node scripts/check.js",
+    "backfill": "node scripts/backfill.js",
     "test": "node --test --test-reporter=spec"
   }
 }
