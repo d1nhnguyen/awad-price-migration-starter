@@ -80,5 +80,12 @@ test('errors have one shape', async () => {
 });
 
 test('/health names the version', async () => {
-  assert.deepEqual((await call('GET', '/health')).body, { ok: true, version: 'v2' });
+  assert.deepEqual((await call('GET', '/health')).body, { ok: true, version: 'v3' });
+});
+
+test('reads come from price_vnd, not price', async () => {
+  db.exec('UPDATE menu_items SET price = 1 WHERE id = 1');   // what v3 must not look at
+  assert.deepEqual((await call('GET', '/menu/1')).body, { id: 1, name: 'Phở bò', price: 45.5, priceVnd: 45500 });
+  assert.deepEqual((await call('POST', '/orders', { items: [{ menuItemId: 1, qty: 3 }] })).body.total, 136.5);
+  db.exec('UPDATE menu_items SET price = 45.5 WHERE id = 1');
 });

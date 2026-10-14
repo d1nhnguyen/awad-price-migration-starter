@@ -1,9 +1,10 @@
 import { createServer } from 'node:http';
 
-// v2 of the menu service. Needs migration 002 (menu_items.price_vnd, dong, integer).
-// Every write sets BOTH columns; every read still comes from price (thousands of
-// dong), so v1 and v2 can serve side by side. The API offers priceVnd next to price.
-const VERSION = 'v2';
+// v3 of the menu service. Every read now comes from price_vnd (dong, integer) — start
+// it only after the backfill, when no row has price_vnd NULL. Every write still sets
+// BOTH columns, so price stays current and v2 can be redeployed at any moment: that
+// is the way back from this version. The API answers in both units, as in v2.
+const VERSION = 'v3';
 
 const json = (res, status, body) => {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -36,18 +37,20 @@ const PRICE_REQUIRED = 'price (thousands of dong) or priceVnd (dong, integer) is
 
 export function createApp(db) {
   const q = {
-    list: db.prepare('SELECT id, name, price FROM menu_items ORDER BY id LIMIT ? OFFSET ?'),
-    get: db.prepare('SELECT id, name, price FROM menu_items WHERE id = ?'),
-    // price is written rounded to whole dong, so both columns always hold the same price
+    list: db.prepare('SELECT id, name, price_vnd FROM menu_items ORDER BY id LIMIT ? OFFSET ?'),
+    get: db.prepare('SELECT id, name, price_vnd FROM menu_items WHERE id = ?'),
+    // price is still written, rounded to whole dong, for v2 to read after a rollback
     insert: db.prepare('INSERT INTO menu_items (name, price, price_vnd) VALUES (?, ? / 1000.0, ?)'),
     setPrice: db.prepare('UPDATE menu_items SET price = ? / 1000.0, price_vnd = ? WHERE id = ?'),
     insertOrder: db.prepare("INSERT INTO orders (created_at) VALUES (datetime('now'))"),
     insertLine: db.prepare('INSERT INTO order_items (order_id, menu_item_id, qty, unit_price) VALUES (?, ?, ?, ?)'),
   };
 
+  // Old clients keep reading price in thousands: it is derived here, at the edge.
   const view = (row) => ({
-    id: row.id, name: row.name, price: row.price,
-    priceVnd: row.price === null ? null : toVnd(row.price),
+    id: row.id, name: row.name,
+    price: row.price_vnd === null ? null : row.price_vnd / 1000,
+    priceVnd: row.price_vnd,
   });
 
   async function handle(req, res) {
@@ -93,15 +96,15 @@ export function createApp(db) {
       db.exec('BEGIN IMMEDIATE');
       try {
         const { lastInsertRowid: orderId } = q.insertOrder.run();
-        let total = 0;
+        let totalVnd = 0; // integer dong: no float drift however many lines
         for (const { menuItemId, qty } of body.items) {
           const item = q.get.get(menuItemId);
           if (!item || !Number.isInteger(qty) || qty < 1) throw Object.assign(new Error(), { status: 400 });
-          q.insertLine.run(orderId, item.id, qty, item.price);
-          total += item.price * qty;
+          q.insertLine.run(orderId, item.id, qty, item.price_vnd / 1000); // unit_price keeps its old unit
+          totalVnd += item.price_vnd * qty;
         }
         db.exec('COMMIT');
-        return json(res, 201, { id: Number(orderId), total: Math.round(total * 1000) / 1000 });
+        return json(res, 201, { id: Number(orderId), total: totalVnd / 1000 });
       } catch (e) {
         db.exec('ROLLBACK');
         if (e.status === 400) return error(res, 400, 'invalid_item', 'unknown menuItemId or bad qty');
